@@ -1,8 +1,8 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, asdict
 from datetime import date
 from enum import Enum
-from typing import Optional, Dict
-from .database import DB
+from typing import Optional
+from .database import db_instance as db
 
 
 class StrValueEnum(str, Enum):
@@ -10,12 +10,19 @@ class StrValueEnum(str, Enum):
         return self.value
 
 class VehicleType(StrValueEnum):
-    car = 'car'
-    truck = 'truck'
-    motorbike = 'motorbike'
+    car = 'car' # 4, 5 seats restriction
     van = 'van'
     suv = 'suv'
-    mini = 'mini' # 2 seat number restriction
+    mini = 'mini' # 2 seat restriction
+
+class Location(StrValueEnum):
+    madrid = 'madrid'
+    barcelona = 'barcelona'
+    valencia = 'valencia'
+    sevilla ='sevilla'
+    malaga = 'malaga'
+    tenerife = 'tenerife'
+    mallorca = 'mallorca'
 
 
 class FuelType(StrValueEnum):
@@ -46,19 +53,34 @@ class Vehicle:
     type: VehicleType  # VehicleType.car
     brand: str  # Toyota
     model: str  # Corolla
-    plate: str  # NRS 3242
+    plate: str  # 3242 NRS
+    location: Location # Location.madrid
     fuel: FuelType  # FuelType.hybrid
     transmission: TransmissionType  # TransmissionType.automatic
     seat_num: int  # 5
     manufacture_date: date  # 2022, 3, 1 - when the vehicle was built
-    registration_date: date  # 2022, 6, 15 - when it joined the company
+    registration_date: date  # 2022, 6, 15 - when it joined the company, can't exceed 5 years after manufacture
     km: int  # 18500
     daily_rate: float  # 39.99
     status: VehicleStatus # VehicleStatus.active
-    id_num: str  # 1H3CM82633A004352
+    reg_num: str  # registration number 1HGM82633A004352
     category: RentalTier  # RentalTier.economy
-    features: Dict[str, str] = field(default_factory=list)  # ['GPS', 'Bluetooth', 'child seat']
     color: Optional[str] = None  # Silver
+
+def save(vehicle: Vehicle):
+    data = asdict(vehicle)
+    for k, val in data.items():
+        if hasattr(val, 'value'):
+            data[k] = val.value
+        elif isinstance(val, date):
+            data[k] = val.isoformat()
+    db.save_vehicle(data)
+
+def update(reg_num: str, parameters: dict):
+        if reg_num:
+            db.update_vehicle(reg_num, parameters)
+        else:
+            raise ValueError("No reg_num provided")
 
 
 class VehicleBuilder:
@@ -67,6 +89,7 @@ class VehicleBuilder:
         self.brand = None
         self.model = None
         self.plate = None
+        self.location = None
         self.fuel = None
         self.transmission = None
         self.seat_num = None
@@ -75,9 +98,8 @@ class VehicleBuilder:
         self.km = None
         self.daily_rate = None
         self.status = None
-        self.id_num = None
+        self.reg_num = None
         self.category = None
-        self.features = {}
         self.color = None
 
     def with_type(self, type_: str):
@@ -94,6 +116,10 @@ class VehicleBuilder:
 
     def with_plate(self, plate: str):
         self.plate = plate
+        return self
+
+    def with_location(self, location: Location):
+        self.location = location
         return self
 
     def with_fuel(self, fuel: str):
@@ -128,18 +154,12 @@ class VehicleBuilder:
         self.status = VehicleStatus(status)
         return self
 
-    def with_id_num(self, id_num: str):
-        self.id_num = id_num
+    def with_reg_num(self, reg_num: str):
+        self.reg_num = reg_num
         return self
 
     def with_category(self, category: str):
         self.category = RentalTier(category)
-        return self
-
-    def with_features(self, **kwargs):
-        self.features = {
-            **kwargs
-        }
         return self
 
     def with_color(self, color):
@@ -147,27 +167,68 @@ class VehicleBuilder:
         return self
 
     def build(self) -> Vehicle:
-        ...
+        required = ["type", "brand", "model", "plate", "location", "fuel",
+                    "transmission", "seat_num", "manufacture_date",
+                    "registration_date", "km", "daily_rate", "status",
+                    "reg_num", "category"]
+        missing = [f for f in required if getattr(self, f) is None]
+        if missing:
+            raise ValueError(f"Missing required fields: {', '.join(missing)}")
 
-        # TODO: restriction of variables
+        if not isinstance(self.seat_num, int) or self.seat_num <= 0:
+            raise ValueError(f"seat_num must be a positive integer, got '{self.seat_num}'")
 
-        # TODO: send vehicle to database to save - DB.save()
+        if self.type == VehicleType.mini and self.seat_num != 2:
+            raise ValueError("Vehicles of type 'mini' must have exactly 2 seats")
 
-        return Vehicle(
-            self.type,
-            self.brand,
-            self.model,
-            self.plate,
-            self.fuel,
-            self.transmission,
-            self.seat_num,
-            self.manufacture_date,
-            self.registration_date,
-            self.km,
-            self.daily_rate,
-            self.status,
-            self.id_num,
-            self.category,
-            self.features,
-            self.color
+        if self.type == VehicleType.car and self.seat_num not in (4, 5):
+            raise ValueError("Vehicles of type 'car' must have 4 or 5 seats")
+
+        if not isinstance(self.manufacture_date, date):
+            raise ValueError(f"manufacture_date must be a date, got '{self.manufacture_date}'")
+
+        if self.manufacture_date > date.today():
+            raise ValueError("manufacture_date cannot be in the future")
+
+        if not isinstance(self.registration_date, date):
+            raise ValueError(f"registration_date must be a date, got '{self.registration_date}'")
+
+        if self.registration_date < self.manufacture_date:
+            raise ValueError("registration_date cannot be before manufacture_date")
+
+        if (self.registration_date - self.manufacture_date).days > 5 * 365:
+            raise ValueError("registration_date cannot exceed 5 years after manufacture_date")
+
+        if not isinstance(self.km, int) or self.km < 0:
+            raise ValueError(f"km must be a non-negative integer, got '{self.km}'")
+
+        if not isinstance(self.daily_rate, (int, float)) or self.daily_rate <= 0:
+            raise ValueError(f"daily_rate must be a positive number, got '{self.daily_rate}'")
+
+        if not self.reg_num or not isinstance(self.reg_num, str):
+            raise ValueError("reg_num must be a non-empty string")
+
+        if not self.plate or not isinstance(self.plate, str):
+            raise ValueError("plate must be a non-empty string")
+
+        v = Vehicle(
+            type=self.type,
+            brand=self.brand,
+            model=self.model,
+            plate=self.plate,
+            location=self.location,
+            fuel=self.fuel,
+            transmission=self.transmission,
+            seat_num=self.seat_num,
+            manufacture_date=self.manufacture_date,
+            registration_date=self.registration_date,
+            km=self.km,
+            daily_rate=self.daily_rate,
+            status=self.status,
+            reg_num=self.reg_num,
+            category=self.category,
+            color=self.color,
         )
+
+        save(v)
+        return v

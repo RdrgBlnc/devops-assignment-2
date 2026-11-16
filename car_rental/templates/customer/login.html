@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Customer Portal Login — Ruta7{% endblock %}
+
+{% block content %}
+<main class="placeholder" style="padding: 3rem 1.5rem;">
+  <div style="max-width: 400px; width: 100%; margin: 0 auto; text-align: center; background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+
+    <div style="text-align: left; margin-bottom: 1rem;">
+      <a href="/" style="color: #666; text-decoration: none; font-size: 0.85rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.3rem;">
+        ← Back to Main Page
+      </a>
+    </div>
+
+    <h1 style="color: var(--customer-accent); margin-bottom: 0.5rem;">Customer Login</h1>
+    <p style="color: #666; font-size: 0.9rem; margin-bottom: 1.5rem;">Enter your Customer ID to access your reservations (1 - 100)</p>
+
+    <form method="POST" action="{{ url_for('customer.login') }}">
+      <div style="margin-bottom: 1.25rem; text-align: left;">
+        <label for="customer_id" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.4rem; color: #333;">Customer ID</label>
+        <input type="text" id="customer_id" name="customer_id" placeholder="e.g. 1" required style="width: 100%; padding: 0.75rem; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem;">
+      </div>
+      <button type="submit" style="width: 100%; background: var(--customer-accent); color: white; border: none; padding: 0.75rem; border-radius: 8px; font-weight: 700; font-size: 1rem; cursor: pointer; margin-bottom: 0.75rem;">
+        Access Account
+      </button>
+    </form>
+
+  </div>
+</main>
+{% endblock %}
