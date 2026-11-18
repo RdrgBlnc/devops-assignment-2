@@ -28,7 +28,7 @@ def save(rental: Rental):
             data[k] = val.value
         elif isinstance(val, date):
             data[k] = val.isoformat()
-    db.save_vehicle(data)
+    db.save_reservation(data)
 
 def update(rental_id: int, parameters: dict):
         if rental_id:
