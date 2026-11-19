@@ -39,3 +39,19 @@
 - Decision: Customers log in by inputting their id.
 - Alternatives considered: Full authentication with hashed passwords - rejected as unnecessary complexity for a local, single-user-at-a-time demo app.
 - Consequences: Anyone can act as any customer, so this is not production-safe, but it kept the customer flow simple to build, test, and demo within the time available.
+
+## [6]. The split: vehicles and reservations services
+- Date: 2026-11-18
+- Status: Decided
+- Context: Assignment 2 allows exactly two services, and ADR-2 already kept vehicles and reservations apart.
+- Decision: Vehicles owns vehicles and the transport queue, reservations owns customers and rentals.
+- Alternatives considered: A third transport service - rejected, only two containers are allowed.
+- Consequences: ADR-2 held, but a rental now needs the vehicles service to be operational.
+
+## [7]. Data and migrations: one database per service
+- Date: 2026-11-20
+- Status: Decided
+- Context: Each service now needs its own SQL Server database, and schema changes must keep the existing data.
+- Decision: Each service applies numbered SQL files at startup and records them in a `schema_migrations` table, so each file runs once.
+- Alternatives considered: Alembic - rejected, a small runner of plain SQL files is simpler to explain. Recreating the schema on every boot - rejected, it deletes new created data from users.
+- Consequences: The foreign key from rentals to vehicles is gone, so the car is checked over HTTP when booking. A bad migration is rolled back and fixed with a new migration, and damaged data will be restored from Azure's automatic backups.
