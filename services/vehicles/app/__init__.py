@@ -1,19 +1,15 @@
-from flask import Flask, render_template
-from .config import Config
+from flask import Flask
+
+from .config import load_config
 
 
-def create_app():
+def create_app(config=None):
+    config = config or load_config()
+
     app = Flask(__name__)
-    app.secret_key = 'vehicles-app'
-    app.config.from_object(Config)
+    app.config["CFG"] = config
 
-    from .routes.customer import customer_bp
-    from .routes.enterprise import enterprise_bp
-    app.register_blueprint(customer_bp, url_prefix="/customer")
-    app.register_blueprint(enterprise_bp, url_prefix="/enterprise")
-
-    @app.route("/")
-    def index():
-        return render_template("index.html")
+    # No secret key: this service is a stateless JSON API, it has no sessions
+    # or cookies to sign. Routes are registered here as they are rewritten.
 
     return app
