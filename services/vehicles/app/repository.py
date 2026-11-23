@@ -19,6 +19,10 @@ SORTS = {
 DEFAULT_SORT = "reg_num"
 
 
+class QueueBusy(Exception):
+    """Another request is changing the transport queue and did not finish in time."""
+
+
 def _clean(row):
     """SQL Server types -> JSON-friendly Python values."""
     out = {}
@@ -176,3 +180,23 @@ class VehicleRepository:
         return bool(self._query(
             "SELECT 1 AS found FROM transport_queue WHERE reg_num = %s", (reg_num,)
         ))
+
+    def lock_queue(self):
+        """Take a lock on the whole queue until this connection closes.
+
+        Two requests that arrive together could otherwise both see 4 waiting vehicles
+        and both send the same truck. The second request waits here for the first.
+        """
+        cur = self.conn.cursor()
+        try:
+            cur.execute(
+                "DECLARE @r INT; "
+                "EXEC @r = sp_getapplock @Resource = 'transport_queue', @LockMode = 'Exclusive', "
+                "@LockOwner = 'Session', @LockTimeout = 10000; "
+                "SELECT @r AS status"
+            )
+            status = cur.fetchone()[0]
+        finally:
+            cur.close()
+        if status < 0:
+            raise QueueBusy()

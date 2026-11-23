@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from collections import deque
-from typing import Dict, List, Tuple
+from dataclasses import dataclass
+from typing import List
 
 from .vehicle import Location, Vehicle
 
@@ -146,33 +147,71 @@ def resolve_route(origin: Location, destination: Location) -> List[Transport]:
     return [_truck_creator.get_transport(origin, destination)]
 
 
+@dataclass
+class QueuedVehicle:
+    """What the queue needs to know about a waiting vehicle, and no more."""
+    reg_num: str
+    location: Location
+    final_destination: Location
+
+
+_CREATORS = {"truck": _truck_creator, "ship": _ship_creator}
+
+
 class TransportQueueManager:
-    def __init__(self, on_move=None):
-        self._active: Dict[Tuple[Location, Location, str], Transport] = {}
-        self._on_move = on_move  # called as on_move(reg_num, destination) when a vehicle departs
+    """Batches vehicles into trucks and ships, keeping the queues in a store.
 
-    def request_transport(self, vehicle: Vehicle, final_destination: Location) -> None:
-        trips = resolve_route(vehicle.location, final_destination)
-        self._advance(vehicle, trips, trip_index=0)
+    The store is the database (VehicleRepository): the queue survives the container
+    scaling to zero, and a vehicle waiting at a stop is a row, not a Python object.
+    A trip is rebuilt from the stored rows each time, so no state lives in memory.
+    The store must offer add_to_queue, waiting_in_queue, remove_from_queue,
+    queue_groups and update_location.
+    """
 
-    def _advance(self, vehicle: Vehicle, trips: List[Transport], trip_index: int) -> None:
-        trip = trips[trip_index]
-        key = (trip.origin, trip.destination, trip.mode)
+    def __init__(self, store):
+        self.store = store
 
-        active_trip = self._active.setdefault(key, trip)
-        active_trip.enqueue(vehicle)
+    def request_transport(
+        self, reg_num: str, location: Location, final_destination: Location
+    ) -> None:
+        self._enqueue(reg_num, location, final_destination)
 
-        if active_trip.is_ready_to_depart():
-            batch = active_trip.depart(on_move=self._on_move)
-            del self._active[key]  # this trip's queue starts fresh next time
+    def _enqueue(self, reg_num, location, final_destination):
+        # the next leg is always the first leg of the route from where the vehicle is now
+        trip = resolve_route(location, final_destination)[0]
+        self.store.add_to_queue(
+            reg_num, trip.origin.value, trip.destination.value, trip.mode, final_destination.value
+        )
+        self._depart_if_ready(trip)
 
-            if trip_index + 1 < len(trips):
-                for moved_vehicle in batch:
-                    self._advance(moved_vehicle, trips, trip_index + 1)
+    def _depart_if_ready(self, trip):
+        rows = self.store.waiting_in_queue(trip.origin.value, trip.destination.value, trip.mode)
+        for row in rows:
+            trip.enqueue(
+                QueuedVehicle(row["reg_num"], trip.origin, Location(row["final_destination"]))
+            )
+        if not trip.is_ready_to_depart():
+            return
 
-    def pending_trips(self) -> List[str]:
+        def on_move(reg_num, place):
+            self.store.update_location(reg_num, place.value)
+
+        batch = trip.depart(on_move=on_move)
+        self.store.remove_from_queue([row["id"] for row in rows[:len(batch)]])
+        for vehicle in batch:
+            if vehicle.location != vehicle.final_destination:  # the journey has another leg
+                self._enqueue(vehicle.reg_num, vehicle.location, vehicle.final_destination)
+
+    def pending_trips(self) -> List[dict]:
         return [
-            f'{trip.mode}: {trip.origin} -> {trip.destination} '
-            f'({len(trip.queue)}/{trip.min_vehicles_to_depart} queued)'
-            for trip in self._active.values()
+            {
+                "mode": group["mode"],
+                "origin": group["origin"],
+                "destination": group["destination"],
+                "queued": group["queued"],
+                "needed": _CREATORS[group["mode"]].get_transport(
+                    Location(group["origin"]), Location(group["destination"])
+                ).min_vehicles_to_depart,
+            }
+            for group in self.store.queue_groups()
         ]

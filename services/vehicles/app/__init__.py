@@ -8,6 +8,7 @@ from .db import Database
 from .deps import close_repo
 from .errors import register_error_handlers
 from .repository import VehicleRepository
+from .routes.transport import bp as transport_bp
 from .routes.vehicles import bp as vehicles_bp
 from .startup import initialise_database
 
@@ -55,4 +56,5 @@ def create_app(config=None, database=None, migrate=True, repo_factory=None):
     app.teardown_appcontext(close_repo)
     register_error_handlers(app)
     app.register_blueprint(vehicles_bp)
+    app.register_blueprint(transport_bp)
     return app
