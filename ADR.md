@@ -54,4 +54,4 @@
 - Context: Each service now needs its own SQL Server database, and schema changes must keep the existing data.
 - Decision: Each service applies numbered SQL files at startup and records them in a `schema_migrations` table, so each file runs once.
 - Alternatives considered: Alembic - rejected, a small runner of plain SQL files is simpler to explain. Recreating the schema on every boot - rejected, it deletes new created data from users.
-- Consequences: The foreign key from rentals to vehicles is gone, so the car is checked over HTTP when booking. A bad migration is rolled back and fixed with a new migration, and damaged data will be restored from Azure's automatic backups.
+- Consequences: The foreign key from rentals to vehicles is gone, so the car is checked over HTTP when booking.
