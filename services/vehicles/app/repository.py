@@ -1,11 +1,26 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-RENTAL_COLUMNS = ("customer_id", "car_reg_num", "start_date", "end_date", "total_price", "status")
-RENTAL_SELECT = "id, " + ", ".join(RENTAL_COLUMNS)
-RENTAL_FILTERS = ("status", "customer_id", "car_reg_num")
-RENTAL_UPDATABLE = ("status", "end_date", "total_price")
-CUSTOMER_SELECT = "id, name, surname, email, location"
+COLUMNS = (
+    "reg_num", "type", "brand", "model", "category", "daily_rate", "seat_num",
+    "plate", "color", "fuel", "transmission", "km", "status", "location",
+    "manufacture_date", "registration_date",
+)
+# Only these may be used as filters, updates or sort orders. Column names are
+# put into the SQL text, so they must never come straight from the request.
+FILTERABLE = ("status", "location", "type", "category", "fuel", "color")
+UPDATABLE = ("category", "daily_rate", "status")
+SORTS = {
+    "price_asc": "daily_rate ASC, reg_num",
+    "price_desc": "daily_rate DESC, reg_num",
+    "km_asc": "km ASC, reg_num",
+    "km_desc": "km DESC, reg_num",
+}
+DEFAULT_SORT = "reg_num"
+
+
+class QueueBusy(Exception):
+    """Another request is changing the transport queue and did not finish in time."""
 
 
 def _clean(row):
@@ -20,19 +35,8 @@ def _clean(row):
     return out
 
 
-def _like(term):
-    """Escape LIKE wildcards so a search for '50%' means a literal 50%."""
-    for char in ("[", "%", "_"):
-        term = term.replace(char, f"[{char}]")
-    return f"%{term}%"
-
-
-class ReservationRepository:
-    """All SQL of the reservations service: the customers and rentals tables.
-
-    car_reg_num is a plain value here, not a foreign key: vehicles live in the
-    other service's database, so the link is checked over HTTP, not by SQL.
-    """
+class VehicleRepository:
+    """All SQL of the vehicles service: the vehicles table and the transport queue."""
 
     def __init__(self, conn):
         self.conn = conn
@@ -73,94 +77,126 @@ class ReservationRepository:
         self.commit()
         return bool(rows)
 
-    # -- customers -------------------------------------------------------
+    # -- vehicles --------------------------------------------------------
 
     @staticmethod
-    def _customer_where(location, search):
+    def _where(filters):
         clauses, params = [], []
-        if location:
-            clauses.append("location = %s")
-            params.append(location)
-        if search:
-            clauses.append("(name LIKE %s OR surname LIKE %s OR email LIKE %s)")
-            params.extend([_like(search)] * 3)
-        sql = (" WHERE " + " AND ".join(clauses)) if clauses else ""
-        return sql, params
-
-    def list_customers(self, location=None, search=None, limit=100, offset=0):
-        where, params = self._customer_where(location, search)
-        return self._query(
-            f"SELECT {CUSTOMER_SELECT} FROM customers{where} "
-            "ORDER BY id OFFSET %s ROWS FETCH NEXT %s ROWS ONLY",
-            params + [offset, limit],
-        )
-
-    def count_customers(self, location=None, search=None):
-        where, params = self._customer_where(location, search)
-        return self._query(f"SELECT COUNT(*) AS total FROM customers{where}", params)[0]["total"]
-
-    def get_customer(self, customer_id):
-        rows = self._query(
-            f"SELECT {CUSTOMER_SELECT} FROM customers WHERE id = %s", (customer_id,)
-        )
-        return rows[0] if rows else None
-
-    # -- rentals ---------------------------------------------------------
-
-    @staticmethod
-    def _rental_where(filters):
-        clauses, params = [], []
-        for column in RENTAL_FILTERS:
-            if filters.get(column) not in (None, ""):
+        for column in FILTERABLE:
+            if filters.get(column):
                 clauses.append(f"{column} = %s")
                 params.append(filters[column])
         sql = (" WHERE " + " AND ".join(clauses)) if clauses else ""
         return sql, params
 
-    def list_rentals(self, filters=None, limit=100, offset=0):
-        where, params = self._rental_where(filters or {})
-        return self._query(
-            f"SELECT {RENTAL_SELECT} FROM rentals{where} "
-            "ORDER BY id OFFSET %s ROWS FETCH NEXT %s ROWS ONLY",
-            params + [offset, limit],
+    def list_vehicles(self, filters=None, sort_by=None, limit=100, offset=0):
+        where, params = self._where(filters or {})
+        order = SORTS.get(sort_by, DEFAULT_SORT)
+        sql = (
+            f"SELECT {', '.join(COLUMNS)} FROM vehicles{where} "
+            f"ORDER BY {order} OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"
         )
+        return self._query(sql, params + [offset, limit])
 
-    def count_rentals(self, filters=None):
-        where, params = self._rental_where(filters or {})
-        return self._query(f"SELECT COUNT(*) AS total FROM rentals{where}", params)[0]["total"]
+    def count_vehicles(self, filters=None):
+        where, params = self._where(filters or {})
+        return self._query(f"SELECT COUNT(*) AS total FROM vehicles{where}", params)[0]["total"]
 
-    def get_rental(self, rental_id):
-        rows = self._query(f"SELECT {RENTAL_SELECT} FROM rentals WHERE id = %s", (rental_id,))
+    def get_vehicle(self, reg_num):
+        rows = self._query(
+            f"SELECT {', '.join(COLUMNS)} FROM vehicles WHERE reg_num = %s", (reg_num,)
+        )
         return rows[0] if rows else None
 
-    def insert_rental(self, data):
-        """Insert a rental and return its new id (IDENTITY column)."""
-        placeholders = ", ".join(["%s"] * len(RENTAL_COLUMNS))
-        rows = self._query(
-            f"INSERT INTO rentals ({', '.join(RENTAL_COLUMNS)}) OUTPUT INSERTED.id "
-            f"VALUES ({placeholders})",
-            [data.get(column) for column in RENTAL_COLUMNS],
+    def insert_vehicle(self, data):
+        placeholders = ", ".join(["%s"] * len(COLUMNS))
+        self._execute(
+            f"INSERT INTO vehicles ({', '.join(COLUMNS)}) VALUES ({placeholders})",
+            [data.get(column) for column in COLUMNS],
         )
-        return rows[0]["id"]
 
-    def update_rental(self, rental_id, fields):
+    def update_vehicle(self, reg_num, fields):
         if not fields:
             raise ValueError("update requires at least one field to change")
-        unknown = [key for key in fields if key not in RENTAL_UPDATABLE]
+        unknown = [key for key in fields if key not in UPDATABLE]
         if unknown:
             raise ValueError(f"cannot update: {', '.join(unknown)}")
         assignments = ", ".join(f"{key} = %s" for key in fields)
         return self._execute(
-            f"UPDATE rentals SET {assignments} WHERE id = %s",
-            list(fields.values()) + [rental_id],
+            f"UPDATE vehicles SET {assignments} WHERE reg_num = %s",
+            list(fields.values()) + [reg_num],
+        )
+
+    def update_location(self, reg_num, location):
+        return self._execute(
+            "UPDATE vehicles SET location = %s WHERE reg_num = %s", (location, reg_num)
         )
 
     def stats(self):
-        rentals = self._query(
-            "SELECT SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active FROM rentals"
+        totals = self._query(
+            "SELECT COUNT(*) AS total, "
+            "SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS available "
+            "FROM vehicles"
         )[0]
-        customers = self._query("SELECT COUNT(*) AS total FROM customers")[0]
+        pending = self._query(
+            "SELECT COUNT(*) AS pending FROM "
+            "(SELECT 1 AS x FROM transport_queue GROUP BY origin, destination, mode) AS g"
+        )[0]
         return {
-            "active_rentals": rentals["active"] or 0,
-            "total_customers": customers["total"],
+            "total_vehicles": totals["total"],
+            "available_vehicles": totals["available"] or 0,
+            "pending_trips": pending["pending"],
         }
+
+    # -- transport queue (persisted so it survives scale-to-zero) ---------
+
+    def add_to_queue(self, reg_num, origin, destination, mode, final_destination):
+        self._execute(
+            "INSERT INTO transport_queue (reg_num, origin, destination, mode, final_destination) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            (reg_num, origin, destination, mode, final_destination),
+        )
+
+    def waiting_in_queue(self, origin, destination, mode):
+        return self._query(
+            "SELECT id, reg_num, final_destination FROM transport_queue "
+            "WHERE origin = %s AND destination = %s AND mode = %s ORDER BY id",
+            (origin, destination, mode),
+        )
+
+    def remove_from_queue(self, ids):
+        if not ids:
+            return
+        placeholders = ", ".join(["%s"] * len(ids))
+        self._execute(f"DELETE FROM transport_queue WHERE id IN ({placeholders})", list(ids))
+
+    def queue_groups(self):
+        return self._query(
+            "SELECT origin, destination, mode, COUNT(*) AS queued FROM transport_queue "
+            "GROUP BY origin, destination, mode ORDER BY MIN(id)"
+        )
+
+    def is_queued(self, reg_num):
+        return bool(self._query(
+            "SELECT 1 AS found FROM transport_queue WHERE reg_num = %s", (reg_num,)
+        ))
+
+    def lock_queue(self):
+        """Take a lock on the whole queue until this connection closes.
+
+        Two requests that arrive together could otherwise both see 4 waiting vehicles
+        and both send the same truck. The second request waits here for the first.
+        """
+        cur = self.conn.cursor()
+        try:
+            cur.execute(
+                "DECLARE @r INT; "
+                "EXEC @r = sp_getapplock @Resource = 'transport_queue', @LockMode = 'Exclusive', "
+                "@LockOwner = 'Session', @LockTimeout = 10000; "
+                "SELECT @r AS status"
+            )
+            status = cur.fetchone()[0]
+        finally:
+            cur.close()
+        if status < 0:
+            raise QueueBusy()

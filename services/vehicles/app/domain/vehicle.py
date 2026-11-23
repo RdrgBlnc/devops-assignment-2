@@ -1,8 +1,7 @@
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import date
 from enum import Enum
 from typing import Optional
-from .database import db_instance as db
 
 
 class StrValueEnum(str, Enum):
@@ -67,21 +66,15 @@ class Vehicle:
     category: RentalTier  # RentalTier.economy
     color: Optional[str] = None  # Silver
 
-def save(vehicle: Vehicle):
-    data = asdict(vehicle)
-    for k, val in data.items():
-        if hasattr(val, 'value'):
-            data[k] = val.value
-        elif isinstance(val, date):
-            data[k] = val.isoformat()
-    db.save_vehicle(data)
-
-def update(reg_num: str, parameters: dict):
-        if reg_num:
-            db.update_vehicle(reg_num, parameters)
-        else:
-            raise ValueError("No reg_num provided")
-
+    def to_dict(self) -> dict:
+        """Plain values (enums as their text, dates as ISO strings), ready for the database or JSON."""
+        data = asdict(self)
+        for key, value in data.items():
+            if hasattr(value, 'value'):
+                data[key] = value.value
+            elif isinstance(value, date):
+                data[key] = value.isoformat()
+        return data
 
 class VehicleBuilder:
     def __init__(self):
@@ -118,8 +111,8 @@ class VehicleBuilder:
         self.plate = plate
         return self
 
-    def with_location(self, location: Location):
-        self.location = location
+    def with_location(self, location: str):
+        self.location = Location(location)
         return self
 
     def with_fuel(self, fuel: str):
@@ -230,5 +223,4 @@ class VehicleBuilder:
             color=self.color,
         )
 
-        save(v)
         return v
