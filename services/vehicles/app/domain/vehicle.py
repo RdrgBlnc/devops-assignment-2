@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date
 from enum import Enum
 from typing import Optional
@@ -66,6 +66,16 @@ class Vehicle:
     category: RentalTier  # RentalTier.economy
     color: Optional[str] = None  # Silver
 
+    def to_dict(self) -> dict:
+        """Plain values (enums as their text, dates as ISO strings), ready for the database or JSON."""
+        data = asdict(self)
+        for key, value in data.items():
+            if hasattr(value, 'value'):
+                data[key] = value.value
+            elif isinstance(value, date):
+                data[key] = value.isoformat()
+        return data
+
 class VehicleBuilder:
     def __init__(self):
         self.type = None
@@ -101,8 +111,8 @@ class VehicleBuilder:
         self.plate = plate
         return self
 
-    def with_location(self, location: Location):
-        self.location = location
+    def with_location(self, location: str):
+        self.location = Location(location)
         return self
 
     def with_fuel(self, fuel: str):
