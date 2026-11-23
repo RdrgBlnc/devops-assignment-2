@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections import deque
 from typing import Dict, List, Tuple
 
-from .vehicle_info import Location, Vehicle
+from .vehicle import Location, Vehicle
 
 
 # Which locations are islands, and which single mainland city each one
@@ -42,7 +42,10 @@ class Transport(ABC):
     def is_ready_to_depart(self) -> bool:
         return len(self.queue) >= self.min_vehicles_to_depart
 
-    def depart(self) -> List[Vehicle]:
+    def depart(self, on_move=None) -> List[Vehicle]:
+        # on_move(reg_num, destination) is called once per vehicle that leaves, so the
+        # caller can save the new location. The vehicle itself knows nothing about the
+        # database: Vehicle is a plain dataclass with no update() method.
         if not self.is_ready_to_depart():
             raise ValueError(
                 f'{self.mode} needs at least {self.min_vehicles_to_depart} '
@@ -52,10 +55,10 @@ class Transport(ABC):
         batch = [self.queue.popleft() for _ in range(self.min_vehicles_to_depart)]
         for vehicle in batch:
             vehicle.location = self.destination
-            vehicle.update(vehicle.reg_num, {'location': self.destination.value})
+            if on_move is not None:
+                on_move(vehicle.reg_num, self.destination)
 
         return batch
-
 
 
 class Truck(Transport):
@@ -101,7 +104,6 @@ _truck_creator = TruckCreator()
 _ship_creator = ShipCreator()
 
 
-
 def resolve_route(origin: Location, destination: Location) -> List[Transport]:
     if origin == destination:
         raise ValueError('origin and destination must be different')
@@ -145,8 +147,9 @@ def resolve_route(origin: Location, destination: Location) -> List[Transport]:
 
 
 class TransportQueueManager:
-    def __init__(self):
+    def __init__(self, on_move=None):
         self._active: Dict[Tuple[Location, Location, str], Transport] = {}
+        self._on_move = on_move  # called as on_move(reg_num, destination) when a vehicle departs
 
     def request_transport(self, vehicle: Vehicle, final_destination: Location) -> None:
         trips = resolve_route(vehicle.location, final_destination)
@@ -160,7 +163,7 @@ class TransportQueueManager:
         active_trip.enqueue(vehicle)
 
         if active_trip.is_ready_to_depart():
-            batch = active_trip.depart()
+            batch = active_trip.depart(on_move=self._on_move)
             del self._active[key]  # this trip's queue starts fresh next time
 
             if trip_index + 1 < len(trips):
