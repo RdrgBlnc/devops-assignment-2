@@ -3,6 +3,7 @@ from datetime import date
 import pymssql
 from flask import Blueprint, current_app, jsonify, request
 
+from ..clients.vehicles import VehiclesUnavailable
 from ..deps import get_repo
 from ..domain.rental import (
     Location, RentalBuilder, RentalStatus, check_transition, new_total_price,
@@ -125,11 +126,15 @@ def create_rental():
     if repo.get_customer(customer_id) is None:
         raise ApiError(404, "customer_not_found", f"No customer with id {customer_id}")
 
-    client = current_app.config.get("VEHICLES_CLIENT")
-    if client is None:
-        raise ApiError(503, "vehicles_unavailable", "The vehicles service is not configured")
     reg_num = data["car_reg_num"].strip()
-    vehicle = client.get_vehicle(reg_num)
+    try:
+        vehicle = current_app.config["VEHICLES_CLIENT"].get_vehicle(reg_num)
+    except VehiclesUnavailable as error:
+        # designed failure: no rental is created while the vehicles service cannot confirm the car
+        raise ApiError(
+            503, "vehicles_unavailable",
+            f"The vehicles service is not available ({error}); try again in a moment",
+        )
     if vehicle is None:
         raise ApiError(404, "vehicle_not_found", f"No vehicle with reg_num '{reg_num}'")
     if vehicle["status"] != "active":

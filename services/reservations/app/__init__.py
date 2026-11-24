@@ -4,6 +4,7 @@ import sys
 from flask import Flask
 
 from .config import load_config
+from .clients.vehicles import VehiclesClient
 from .db import Database
 from .deps import close_repo
 from .errors import register_error_handlers
@@ -46,8 +47,10 @@ def create_app(config=None, database=None, migrate=True, repo_factory=None, vehi
     app.config["CFG"] = config
     app.config["DATABASE"] = database
     app.config["REPO_FACTORY"] = repo_factory or default_repo_factory
-    # how this service asks the vehicles service about a vehicle (added with the HTTP client)
-    app.config["VEHICLES_CLIENT"] = vehicles_client
+    # how this service asks the vehicles service about a vehicle (the only cross-service call)
+    app.config["VEHICLES_CLIENT"] = vehicles_client or VehiclesClient(
+        config.vehicles_url, config.vehicles_timeout_s
+    )
 
     log.info("service starting (version %s)", config.git_sha)
     if migrate:
