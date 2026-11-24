@@ -16,6 +16,35 @@ class RentalStatus(StrValueEnum):
     canceled = 'canceled'    # canceled before or during the rental
 
 
+# From which status a rental may move to which. returned and canceled are final.
+ALLOWED_TRANSITIONS = {
+    RentalStatus.pending: (RentalStatus.confirmed, RentalStatus.canceled),
+    RentalStatus.confirmed: (RentalStatus.active, RentalStatus.canceled),
+    RentalStatus.active: (RentalStatus.returned, RentalStatus.canceled),
+    RentalStatus.returned: (),
+    RentalStatus.canceled: (),
+}
+
+
+def check_transition(current: str, new: str) -> None:
+    """Raise ValueError if a rental may not go from status `current` to status `new`."""
+    allowed = ALLOWED_TRANSITIONS[RentalStatus(current)]
+    if RentalStatus(new) not in allowed:
+        options = ", ".join(status.value for status in allowed) or "nothing (it is final)"
+        raise ValueError(f"A {current} rental cannot become {new}; it can become: {options}")
+
+
+def new_total_price(total_price: float, start_date: date, old_end: date, new_end: date) -> float:
+    """The price after changing the end date, at the same daily rate as before."""
+    if new_end <= start_date:
+        raise ValueError("end_date must be after start_date")
+    daily_rate = total_price / (old_end - start_date).days
+    total = round(daily_rate * (new_end - start_date).days, 2)
+    if total > MAX_TOTAL_PRICE:
+        raise ValueError("the rental is too long: the total price is too large")
+    return total
+
+
 class Location(StrValueEnum):
     """The cities a customer can be based in (the same seven cities as the vehicles)."""
     madrid = 'madrid'

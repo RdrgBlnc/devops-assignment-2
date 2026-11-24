@@ -4,7 +4,9 @@ import pymssql
 from flask import Blueprint, current_app, jsonify, request
 
 from ..deps import get_repo
-from ..domain.rental import Location, RentalBuilder, RentalStatus
+from ..domain.rental import (
+    Location, RentalBuilder, RentalStatus, check_transition, new_total_price,
+)
 from ..errors import ApiError
 from .customers import DEFAULT_LIMIT, MAX_LIMIT, enum_arg, int_arg
 
@@ -154,3 +156,83 @@ def create_rental():
     response.status_code = 201
     response.headers["Location"] = f"/rentals/{rental_id}"
     return response
+
+
+def _load_rental(rental_id):
+    rental = get_repo().get_rental(rental_id)
+    if rental is None:
+        raise ApiError(404, "rental_not_found", f"No rental with id {rental_id}")
+    return rental
+
+
+@bp.patch("/rentals/<int:rental_id>")
+def update_rental(rental_id):
+    """Change a rental's status or end date. Status changes follow the allowed transitions."""
+    data = _json_object()
+    unknown = [key for key in data if key not in ("status", "end_date")]
+    if unknown:
+        raise ApiError(
+            400, "invalid_field",
+            f"Cannot update {', '.join(unknown)}; only status and end_date can be changed",
+        )
+    if not data:
+        raise ApiError(400, "missing_field", "Send status and/or end_date")
+
+    fields = {}
+    if "status" in data:
+        status = data["status"]
+        if status not in [member.value for member in RentalStatus]:
+            allowed = ", ".join(member.value for member in RentalStatus)
+            raise ApiError(400, "invalid_value", f"status must be one of: {allowed}")
+    new_end = _iso_date("end_date", data["end_date"]) if "end_date" in data else None
+
+    rental = _load_rental(rental_id)
+    if "status" in data:
+        try:
+            check_transition(rental["status"], status)
+        except ValueError as error:
+            raise ApiError(409, "invalid_change", str(error))
+        fields["status"] = status
+    if new_end is not None:
+        if rental["status"] in ("returned", "canceled"):
+            raise ApiError(
+                409, "invalid_change", f"A {rental['status']} rental can no longer be changed"
+            )
+        try:
+            fields["total_price"] = new_total_price(
+                rental["total_price"], date.fromisoformat(rental["start_date"]),
+                date.fromisoformat(rental["end_date"]), new_end,
+            )
+        except ValueError as error:
+            raise ApiError(400, "invalid_rental", str(error))
+        fields["end_date"] = new_end.isoformat()
+
+    repo = get_repo()
+    repo.update_rental(rental_id, fields)
+    repo.commit()
+    return jsonify(repo.get_rental(rental_id))
+
+
+@bp.post("/rentals/<int:rental_id>/cancel")
+def cancel_rental(rental_id):
+    """A customer cancels one of their own rentals."""
+    data = _json_object()
+    unknown = [key for key in data if key != "customer_id"]
+    if unknown:
+        raise ApiError(400, "invalid_field", f"Unknown fields: {', '.join(unknown)}")
+    customer_id = data.get("customer_id")
+    if isinstance(customer_id, bool) or not isinstance(customer_id, int) or customer_id < 1:
+        raise ApiError(400, "invalid_value", "customer_id must be a whole number of 1 or more")
+
+    rental = _load_rental(rental_id)
+    if rental["customer_id"] != customer_id:
+        raise ApiError(403, "not_your_rental", "This rental belongs to another customer")
+    try:
+        check_transition(rental["status"], "canceled")
+    except ValueError as error:
+        raise ApiError(409, "invalid_change", str(error))
+
+    repo = get_repo()
+    repo.update_rental(rental_id, {"status": "canceled"})
+    repo.commit()
+    return jsonify(repo.get_rental(rental_id))
