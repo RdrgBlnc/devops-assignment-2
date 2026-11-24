@@ -8,8 +8,10 @@ from .clients.vehicles import VehiclesClient
 from .db import Database
 from .deps import close_repo
 from .errors import register_error_handlers
+from .observability import register_request_logging
 from .repository import ReservationRepository
 from .routes.customers import bp as customers_bp
+from .routes.health import bp as health_bp
 from .routes.rentals import bp as rentals_bp
 from .startup import initialise_database
 
@@ -60,6 +62,8 @@ def create_app(config=None, database=None, migrate=True, repo_factory=None, vehi
     # or cookies to sign.
     app.teardown_appcontext(close_repo)
     register_error_handlers(app)
+    register_request_logging(app)
+    app.register_blueprint(health_bp)
     app.register_blueprint(customers_bp)
     app.register_blueprint(rentals_bp)
     return app

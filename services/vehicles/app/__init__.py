@@ -7,7 +7,9 @@ from .config import load_config
 from .db import Database
 from .deps import close_repo
 from .errors import register_error_handlers
+from .observability import register_request_logging
 from .repository import VehicleRepository
+from .routes.health import bp as health_bp
 from .routes.transport import bp as transport_bp
 from .routes.vehicles import bp as vehicles_bp
 from .startup import initialise_database
@@ -55,6 +57,8 @@ def create_app(config=None, database=None, migrate=True, repo_factory=None):
     # or cookies to sign.
     app.teardown_appcontext(close_repo)
     register_error_handlers(app)
+    register_request_logging(app)
+    app.register_blueprint(health_bp)
     app.register_blueprint(vehicles_bp)
     app.register_blueprint(transport_bp)
     return app
