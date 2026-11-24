@@ -25,10 +25,10 @@ def _configure_logging():
         )
 
 
-def create_app(config=None, database=None, migrate=True, repo_factory=None):
+def create_app(config=None, database=None, migrate=True, repo_factory=None, vehicles_client=None):
     """Build the Flask app.
 
-    config, database and repo_factory can be passed in (tests do this); by default
+    config, database, repo_factory and vehicles_client can be passed in (tests do this); by default
     they come from the environment. With migrate=True the database schema is
     brought up to date before the app is returned, so it never serves requests
     without it.
@@ -46,6 +46,8 @@ def create_app(config=None, database=None, migrate=True, repo_factory=None):
     app.config["CFG"] = config
     app.config["DATABASE"] = database
     app.config["REPO_FACTORY"] = repo_factory or default_repo_factory
+    # how this service asks the vehicles service about a vehicle (added with the HTTP client)
+    app.config["VEHICLES_CLIENT"] = vehicles_client
 
     log.info("service starting (version %s)", config.git_sha)
     if migrate:

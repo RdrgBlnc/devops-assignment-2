@@ -1,6 +1,7 @@
 from datetime import date
 
-from flask import Blueprint, jsonify, request
+import pymssql
+from flask import Blueprint, current_app, jsonify, request
 
 from ..deps import get_repo
 from ..domain.rental import Location, RentalBuilder, RentalStatus
@@ -108,3 +109,48 @@ def get_rental(rental_id):
     if rental is None:
         raise ApiError(404, "rental_not_found", f"No rental with id {rental_id}")
     return jsonify(rental)
+
+
+@bp.post("/rentals")
+def create_rental():
+    data = _json_object()
+    # Dry run with a placeholder rate: every problem in the request itself is reported
+    # before the vehicles service is called or the database is touched.
+    build_rental(data, daily_rate=1)
+
+    repo = get_repo()
+    customer_id = data["customer_id"]
+    if repo.get_customer(customer_id) is None:
+        raise ApiError(404, "customer_not_found", f"No customer with id {customer_id}")
+
+    client = current_app.config.get("VEHICLES_CLIENT")
+    if client is None:
+        raise ApiError(503, "vehicles_unavailable", "The vehicles service is not configured")
+    reg_num = data["car_reg_num"].strip()
+    vehicle = client.get_vehicle(reg_num)
+    if vehicle is None:
+        raise ApiError(404, "vehicle_not_found", f"No vehicle with reg_num '{reg_num}'")
+    if vehicle["status"] != "active":
+        raise ApiError(
+            409, "vehicle_not_active",
+            f"Vehicle '{reg_num}' is {vehicle['status']}; only active vehicles can be rented",
+        )
+
+    rental = build_rental(data, vehicle["daily_rate"])
+    try:
+        rental_id = repo.insert_rental({
+            "customer_id": rental.customer_id,
+            "car_reg_num": rental.car_reg_num,
+            "start_date": rental.start_date.isoformat(),
+            "end_date": rental.end_date.isoformat(),
+            "total_price": rental.total_price,
+            "status": rental.status.value,
+        })
+    except pymssql.IntegrityError:  # the customer was deleted between the check and the insert
+        raise ApiError(404, "customer_not_found", f"No customer with id {customer_id}")
+    repo.commit()
+
+    response = jsonify(repo.get_rental(rental_id))
+    response.status_code = 201
+    response.headers["Location"] = f"/rentals/{rental_id}"
+    return response
