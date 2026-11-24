@@ -33,7 +33,10 @@ def load_config(env=None) -> Config:
     if not database_url:
         raise RuntimeError("DATABASE_URL is not set")
 
-    origins = [o.strip() for o in env.get("CORS_ORIGIN", "http://localhost:8080").split(",")]
+    raw_origins = env.get("CORS_ORIGIN", "http://localhost:8080")
+    origins = [o.strip().rstrip("/") for o in raw_origins.split(",")]
+    if "*" in origins:
+        raise RuntimeError("CORS_ORIGIN must list the UI's address, not * (any website)")
 
     return Config(
         port=_number(env, "PORT", 8000, int, 1),
