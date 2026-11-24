@@ -2,6 +2,7 @@ import logging
 import sys
 
 from flask import Flask
+from flask_cors import CORS
 
 from .config import load_config
 from .db import Database
@@ -56,6 +57,14 @@ def create_app(config=None, database=None, migrate=True, repo_factory=None):
     # No secret key: this service is a stateless JSON API, it has no sessions
     # or cookies to sign.
     app.teardown_appcontext(close_repo)
+    # Only the UI's own address may call this API from a browser; no cookies are involved.
+    CORS(
+        app,
+        origins=config.cors_origins,
+        methods=["GET", "POST", "PATCH", "OPTIONS"],
+        allow_headers=["Content-Type"],
+        max_age=600,
+    )
     register_error_handlers(app)
     register_request_logging(app)
     app.register_blueprint(health_bp)
