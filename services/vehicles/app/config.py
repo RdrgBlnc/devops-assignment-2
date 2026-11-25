@@ -10,8 +10,6 @@ class Config:
     git_sha: str
     db_retry_total_s: float
     db_request_wait_s: float
-    vehicles_url: str
-    vehicles_timeout_s: float
 
 
 def _number(env, name, default, cast, minimum):
@@ -45,7 +43,4 @@ def load_config(env=None) -> Config:
         git_sha=env.get("GIT_SHA", "dev"),
         db_retry_total_s=_number(env, "DB_RETRY_TOTAL_S", 90, float, 0),
         db_request_wait_s=_number(env, "DB_REQUEST_WAIT_S", 20, float, 0),
-        # the seam: where the vehicles service lives, never hardcoded
-        vehicles_url=env.get("VEHICLES_URL", "http://vehicles:8000").rstrip("/"),
-        vehicles_timeout_s=_number(env, "VEHICLES_TIMEOUT_S", 2, float, 0.1),
     )
