@@ -1,66 +1,80 @@
-{% extends "base.html" %}
-
-{% block title %}Book {{ vehicle.brand }} {{ vehicle.model }} — Ruta7{% endblock %}
-
-{% block content %}
-<main class="placeholder" style="justify-content: flex-start; padding: 3rem 1.5rem; background: #f8f9fa;">
-  <div style="max-width: 800px; width: 100%; margin: 0 auto; text-align: left;">
-
-    <a href="{{ url_for('customer.browse_vehicles') }}" style="color: #666; display: inline-block; margin-bottom: 1rem; text-decoration: none;">← Step 1: Change Vehicle Selection</a>
-
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; background: white; padding: 2rem; border-radius: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.06);">
-
-      <!-- Left Column: Detailed Vehicle Specs -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Book a Vehicle — Ruta7</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;1,500&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body class="theme-customer">
+<main class="page">
+  <div class="wrap wrap--medium">
+    <a class="back" href="browse_vehicles.html">← Step 1: Change vehicle</a>
+    <div id="message" role="alert"></div>
+    <div id="booking" class="card two-col" hidden>
       <div>
-        <h2 style="color: var(--customer-accent); margin-top: 0; font-size: 1.5rem;">{{ vehicle.brand }} {{ vehicle.model }}</h2>
-        <p style="color: #777; font-size: 0.85rem; font-family: monospace;">Reg: {{ vehicle.reg_num }}</p>
-
-        <div style="background: #fdfdfd; border: 1px solid #eaeaea; border-radius: 10px; padding: 1.25rem; margin-top: 1rem;">
-          <h4 style="margin-top: 0; color: #333; border-bottom: 1px solid #eee; padding-bottom: 0.5rem;">Vehicle Specifications</h4>
-          <ul style="list-style-type: none; padding: 0; margin: 0; font-size: 0.9rem; line-height: 1.8; color: #555;">
-            <li>📍 <strong>Pickup Location:</strong> {{ vehicle.location|capitalize }}</li>
-            <li>🏷️ <strong>Category Tier:</strong> {{ vehicle.category|capitalize }}</li>
-            <li>🚘 <strong>Type:</strong> {{ vehicle.type|capitalize }}</li>
-            <li>⛽ <strong>Fuel:</strong> {{ vehicle.fuel|capitalize }}</li>
-            <li>⚙️️ <strong>Transmission:</strong> {{ vehicle.transmission|capitalize }}</li>
-            <li>💺 <strong>Seats:</strong> {{ vehicle.seat_num }}</li>
-            <li>🎨 <strong>Color:</strong> {{ vehicle.color or 'N/A' }}</li>
-            <li>🛣️ <strong>Mileage:</strong> {{ vehicle.km }} KM</li>
-            <li>💰 <strong>Daily Rate:</strong> ${{ "%.2f"|format(vehicle.daily_rate) }} / day</li>
-          </ul>
-        </div>
+        <h2 id="name" class="title"></h2>
+        <p id="reg" class="mono muted"></p>
+        <dl id="specs" class="facts"></dl>
       </div>
-
-      <!-- Right Column: Date Selection -->
       <div>
-        <h3 style="margin-top: 0; color: #333;">Step 2: Reserve Dates</h3>
-        <p style="font-size: 0.85rem; color: #666;">Vehicle must be picked up and returned at <strong>{{ vehicle.location|capitalize }}</strong>.</p>
-
-        <form method="POST" action="{{ url_for('customer.new_rental', reg_num=vehicle.reg_num) }}" style="display: flex; flex-direction: column; gap: 1.25rem; margin-top: 1.5rem;">
-
-          <div>
-            <label style="display: block; font-size: 0.85rem; font-weight: 600; color: #444; margin-bottom: 0.3rem;">Pickup Location</label>
-            <input type="text" value="{{ vehicle.location|capitalize }}" disabled style="width: 100%; padding: 0.75rem; border-radius: 8px; border: 1px solid #ddd; background: #f0f0f0; color: #555; font-weight: 600;">
-          </div>
-
-          <div>
-            <label style="display: block; font-size: 0.85rem; font-weight: 600; color: #444; margin-bottom: 0.3rem;">Start Date</label>
-            <input type="date" name="start_date" required style="width: 100%; padding: 0.75rem; border-radius: 8px; border: 1px solid #ccc;">
-          </div>
-
-          <div>
-            <label style="display: block; font-size: 0.85rem; font-weight: 600; color: #444; margin-bottom: 0.3rem;">End Date</label>
-            <input type="date" name="end_date" required style="width: 100%; padding: 0.75rem; border-radius: 8px; border: 1px solid #ccc;">
-          </div>
-
-          <button type="submit" style="background: var(--customer-accent); color: white; padding: 0.85rem; border: none; border-radius: 8px; font-weight: 700; font-size: 1rem; cursor: pointer; margin-top: 0.5rem;">
-            Confirm Reservation
-          </button>
+        <h3>Step 2: Reserve dates</h3>
+        <p class="muted">Pick up and return at <strong id="city"></strong>.</p>
+        <form id="form" class="stack">
+          <div class="field"><label for="start">Start date</label><input id="start" name="start_date" type="date" required></div>
+          <div class="field"><label for="end">End date</label><input id="end" name="end_date" type="date" required></div>
+          <p id="total" class="muted"></p>
+          <button id="submit" class="btn" type="submit">Confirm reservation</button>
         </form>
       </div>
-
     </div>
-
   </div>
 </main>
-{% endblock %}
+<script src="../js/config.js"></script>
+<script src="../js/api.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+const { h, money, capitalize, param, today, guarded, showError, showOk, customerSession } = Ruta7;
+const customer = customerSession.require();
+let vehicle = null;
+function updateTotal() {
+  const start = document.getElementById("start").value, end = document.getElementById("end").value;
+  const days = start && end ? Math.round((new Date(end) - new Date(start)) / 86400000) : 0;
+  document.getElementById("total").textContent = days > 0 ? days + " day(s) × " + money(vehicle.daily_rate) + " = " + money(days * vehicle.daily_rate) : "";
+}
+if (customer) guarded(async () => {
+  vehicle = await Ruta7Api.vehicles.get(param("reg"));
+  const v = vehicle;
+  document.getElementById("name").textContent = v.brand + " " + v.model;
+  document.getElementById("reg").textContent = "Reg: " + v.reg_num;
+  document.getElementById("city").textContent = capitalize(v.location);
+  const facts = [["Category", capitalize(v.category)], ["Type", capitalize(v.type)], ["Fuel", capitalize(v.fuel)],
+    ["Transmission", capitalize(v.transmission)], ["Seats", v.seat_num], ["Colour", v.color || "N/A"],
+    ["Mileage", v.km + " km"], ["Daily rate", money(v.daily_rate)]];
+  facts.forEach(([k, val]) => document.getElementById("specs").append(h("div", {}, h("dt", {}, k), h("dd", {}, val))));
+  document.getElementById("booking").hidden = false;
+  document.getElementById("start").min = today();
+  document.getElementById("end").min = today();
+  document.getElementById("start").addEventListener("change", updateTotal);
+  document.getElementById("end").addEventListener("change", updateTotal);
+  document.getElementById("form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    const button = document.getElementById("submit");
+    button.disabled = true;
+    guarded(async () => {
+      const form = event.target;
+      const rental = await Ruta7Api.reservations.createRental({
+        customer_id: customer.id, car_reg_num: v.reg_num,
+        start_date: form.elements.start_date.value, end_date: form.elements.end_date.value,
+      });
+      showOk("Reservation #" + rental.id + " created for " + money(rental.total_price) + ".");
+      setTimeout(() => { window.location.href = "dashboard.html"; }, 1200);
+    }).finally(() => { button.disabled = false; });
+  });
+});
+</script>
+</body>
+</html>
