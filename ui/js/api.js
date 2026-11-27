@@ -1,10 +1,10 @@
 // Calls to the two services. Every function returns the JSON answer, or throws an ApiError
 // with the service's own error code and message, so the pages can show what went wrong.
 (function () {
-  const config = Object.assign(
-    { vehiclesUrl: "http://localhost:8001", reservationsUrl: "http://localhost:8002" },
-    window.RUTA7_CONFIG || {}
-  );
+  // The addresses come only from js/config.js; there is no fallback here, so a page never
+  // talks to a wrong service by accident when that file is missing.
+  const config = window.RUTA7_CONFIG || {};
+  const missing = ["vehiclesUrl", "reservationsUrl"].filter((key) => !config[key]);
 
   class ApiError extends Error {
     constructor(status, code, message, service) {
@@ -26,6 +26,9 @@
   }
 
   async function request(service, base, path, options) {
+    if (missing.length) {
+      throw new ApiError(0, "not_configured", "js/config.js does not set " + missing.join(" and ") + ".", service);
+    }
     const { method = "GET", body, query } = options || {};
     const init = { method, headers: {} };
     if (body !== undefined) {
