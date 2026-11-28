@@ -28,6 +28,11 @@ class VehiclesClient:
         url = f"{self.base_url}/vehicles/{quote(reg_num, safe='')}"
         try:
             response = self.session.get(url, timeout=self.timeout_s)
+        except requests.ConnectTimeout:
+            # nothing accepted the connection in time: on Windows a closed port looks like
+            # this instead of an immediate "connection refused"
+            log.warning("vehicles service not reachable within %ss: GET %s", self.timeout_s, url)
+            raise VehiclesUnavailable(f"not reachable within {self.timeout_s}s")
         except requests.Timeout:
             log.warning("vehicles service timed out after %ss: GET %s", self.timeout_s, url)
             raise VehiclesUnavailable(f"timed out after {self.timeout_s}s")
