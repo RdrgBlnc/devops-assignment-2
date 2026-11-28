@@ -46,6 +46,28 @@
     }
   };
 
+  // "Starting up" message while api.js waits for a sleeping service (see api.js). It is
+  // only removed if it is still the message on screen, so it never hides an error.
+  const STARTING = "starting up";
+  const waitingFor = new Set();
+  window.addEventListener("ruta7:waiting", (event) => {
+    const { service, waiting } = event.detail;
+    if (waiting) waitingFor.add(service);
+    else waitingFor.delete(service);
+    const box = document.getElementById("message");
+    if (!box) return;
+    const showing = box.classList.contains("banner--info") && box.textContent.includes(STARTING);
+    if (waitingFor.size) {
+      if (!box.textContent || showing) {
+        const names = Array.from(waitingFor).join(" and ");
+        const verb = waitingFor.size > 1 ? " services are " : " service is ";
+        showMessage("info", "The " + names + verb + STARTING + " after being idle. This can take up to a minute; the page continues by itself.");
+      }
+    } else if (showing) {
+      clearMessage();
+    }
+  });
+
   // Run a page action; show the error instead of leaving the page silently empty.
   // The previous message is cleared first, unless the action refreshes data after
   // showing a result (options.keepMessage), so a success message is not wiped at once.

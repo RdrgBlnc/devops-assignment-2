@@ -25,19 +25,31 @@
     return text ? "?" + text : "";
   }
 
-  async function request(service, base, path, options) {
-    if (missing.length) {
-      throw new ApiError(0, "not_configured", "js/config.js does not set " + missing.join(" and ") + ".", service);
-    }
-    const { method = "GET", body, query } = options || {};
-    const init = { method, headers: {} };
-    if (body !== undefined) {
-      init.headers["Content-Type"] = "application/json";
-      init.body = JSON.stringify(body);
-    }
+  // -- cold starts ---------------------------------------------------------------------------
+  // In Azure both services and their databases sleep when nobody uses them. The first
+  // request then waits while a container starts (the browser cannot connect, or gets a
+  // 502/503/504) or while the database wakes (the service answers 503 database_unavailable).
+  // Those answers are retried for up to RETRY_TOTAL_MS, and the page shows a "starting up"
+  // message meanwhile instead of an error.
+  const retry = Object.assign({ totalMs: 90000, firstDelayMs: 1000, maxDelayMs: 8000, slowMs: 2000 }, config.retry || {});
+
+  // Safe to send again: reads always; changes only when the service said its database was
+  // not reachable, because then it stopped before saving anything. A change that failed to
+  // connect is never resent, as it may have been saved before the connection dropped.
+  function shouldRetry(error, method) {
+    if (error.code === "database_unavailable") return true;
+    if (method !== "GET") return false;
+    return error.status === 0 || error.status === 502 || error.status === 503 || error.status === 504;
+  }
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const announce = (service, waiting) =>
+    window.dispatchEvent(new CustomEvent("ruta7:waiting", { detail: { service, waiting } }));
+
+  async function sendOnce(service, url, init) {
     let response;
     try {
-      response = await fetch(base.replace(/\/$/, "") + path + queryString(query), init);
+      response = await fetch(url, init);
     } catch (error) {
       // fetch gives no details here: the service may be stopped, still starting, or not
       // allowing this page's address (CORS), and the browser does not say which.
@@ -57,6 +69,41 @@
       throw new ApiError(response.status, code, message, service);
     }
     return data;
+  }
+
+  async function request(service, base, path, options) {
+    if (missing.length) {
+      throw new ApiError(0, "not_configured", "js/config.js does not set " + missing.join(" and ") + ".", service);
+    }
+    const { method = "GET", body, query } = options || {};
+    const init = { method, headers: {} };
+    if (body !== undefined) {
+      init.headers["Content-Type"] = "application/json";
+      init.body = JSON.stringify(body);
+    }
+    const url = base.replace(/\/$/, "") + path + queryString(query);
+
+    const started = Date.now();
+    let delay = retry.firstDelayMs;
+    let waiting = false;
+    // a first answer that is merely slow (a container starting) also shows the message
+    const slowTimer = setTimeout(() => { waiting = true; announce(service, true); }, retry.slowMs);
+    try {
+      for (;;) {
+        try {
+          return await sendOnce(service, url, init);
+        } catch (error) {
+          const left = retry.totalMs - (Date.now() - started);
+          if (!(error instanceof ApiError) || !shouldRetry(error, method) || left <= 0) throw error;
+          if (!waiting) { waiting = true; announce(service, true); }
+          await sleep(Math.min(delay, left));
+          delay = Math.min(delay * 2, retry.maxDelayMs);
+        }
+      }
+    } finally {
+      clearTimeout(slowTimer);
+      if (waiting) announce(service, false);
+    }
   }
 
   const vehicleCall = (path, options) => request("vehicles", config.vehiclesUrl, path, options);
