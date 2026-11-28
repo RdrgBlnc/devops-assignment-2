@@ -19,6 +19,8 @@ services:
       MSSQL_SA_PASSWORD: ${SA_PASSWORD:?Run "uv run tools/make_env.py" once to create the .env file}
     volumes:
       - sqldata:/var/opt/mssql      # the data survives `docker compose down`
+    ports:
+      - "127.0.0.1:1433:1433"       # this computer only: for the database tests (TEST_SQLSERVER_URL)
     healthcheck:
       test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -C -Q "SELECT 1" || exit 1
       interval: 5s
