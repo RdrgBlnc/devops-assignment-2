@@ -76,3 +76,33 @@ def repo(database):
     yield repo
     repo.rollback()
     repo.close()
+
+
+# -- route tests: the real Flask app on an in-memory repository ------------------------------
+
+UI_ORIGIN = "http://localhost:8080"
+
+
+@pytest.fixture
+def store():
+    from fakes import FakeStore
+
+    return FakeStore()
+
+
+@pytest.fixture
+def app(store):
+    from app import create_app
+    from app.config import load_config
+
+    config = load_config({
+        "DATABASE_URL": "mssql+pymssql://user:pass@db:1433/vehicles",
+        "CORS_ORIGIN": UI_ORIGIN,
+        "GIT_SHA": "abc1234",
+    })
+    return create_app(config, database=object(), migrate=False, repo_factory=store.repo)
+
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
