@@ -1,0 +1,10 @@
+# Coverage of the service code (app/), checked by `uv run pytest --cov`.
+# The run fails if it is below 70%; CI uses the same file.
+[run]
+source = app
+branch = True
+
+[report]
+fail_under = 70
+show_missing = True
+skip_empty = True

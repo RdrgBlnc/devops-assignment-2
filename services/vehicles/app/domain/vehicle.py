@@ -8,17 +8,19 @@ class StrValueEnum(str, Enum):
     def __str__(self):
         return self.value
 
+
 class VehicleType(StrValueEnum):
-    car = 'car' # 4, 5 seats restriction
+    car = 'car'  # 4, 5 seats restriction
     van = 'van'
     suv = 'suv'
-    mini = 'mini' # 2 seat restriction
+    mini = 'mini'  # 2 seat restriction
+
 
 class Location(StrValueEnum):
     madrid = 'madrid'
     barcelona = 'barcelona'
     valencia = 'valencia'
-    sevilla ='sevilla'
+    sevilla = 'sevilla'
     malaga = 'malaga'
     tenerife = 'tenerife'
     mallorca = 'mallorca'
@@ -41,6 +43,7 @@ class VehicleStatus(StrValueEnum):
     maintenance = 'maintenance'  # temporarily unavailable
     retired = 'retired'        # removed
 
+
 class RentalTier(StrValueEnum):
     economy = 'economy'
     midsize = 'midsize'
@@ -53,21 +56,22 @@ class Vehicle:
     brand: str  # Toyota
     model: str  # Corolla
     plate: str  # 3242 NRS
-    location: Location # Location.madrid
+    location: Location  # Location.madrid
     fuel: FuelType  # FuelType.hybrid
     transmission: TransmissionType  # TransmissionType.automatic
     seat_num: int  # 5
     manufacture_date: date  # 2022, 3, 1 - when the vehicle was built
-    registration_date: date  # 2022, 6, 15 - when it joined the company, can't exceed 5 years after manufacture
+    # when it joined the company; at most 5 years after manufacture
+    registration_date: date  # 2022, 6, 15
     km: int  # 18500
     daily_rate: float  # 39.99
-    status: VehicleStatus # VehicleStatus.active
+    status: VehicleStatus  # VehicleStatus.active
     reg_num: str  # registration number 1HGM82633A004352
     category: RentalTier  # RentalTier.economy
     color: Optional[str] = None  # Silver
 
     def to_dict(self) -> dict:
-        """Plain values (enums as their text, dates as ISO strings), ready for the database or JSON."""
+        """Plain values (enums as text, dates as ISO strings), ready for the database or JSON."""
         data = asdict(self)
         for key, value in data.items():
             if hasattr(value, 'value'):
@@ -75,6 +79,15 @@ class Vehicle:
             elif isinstance(value, date):
                 data[key] = value.isoformat()
         return data
+
+
+def _is_whole(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_number(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
 
 class VehicleBuilder:
     def __init__(self):
@@ -168,7 +181,8 @@ class VehicleBuilder:
         if missing:
             raise ValueError(f"Missing required fields: {', '.join(missing)}")
 
-        if not isinstance(self.seat_num, int) or self.seat_num <= 0:
+        # bool is a subclass of int in Python, so True would otherwise count as 1
+        if not _is_whole(self.seat_num) or self.seat_num <= 0:
             raise ValueError(f"seat_num must be a positive integer, got '{self.seat_num}'")
 
         if self.type == VehicleType.mini and self.seat_num != 2:
@@ -192,10 +206,10 @@ class VehicleBuilder:
         if (self.registration_date - self.manufacture_date).days > 5 * 365:
             raise ValueError("registration_date cannot exceed 5 years after manufacture_date")
 
-        if not isinstance(self.km, int) or self.km < 0:
+        if not _is_whole(self.km) or self.km < 0:
             raise ValueError(f"km must be a non-negative integer, got '{self.km}'")
 
-        if not isinstance(self.daily_rate, (int, float)) or self.daily_rate <= 0:
+        if not _is_number(self.daily_rate) or self.daily_rate <= 0:
             raise ValueError(f"daily_rate must be a positive number, got '{self.daily_rate}'")
 
         if not self.reg_num or not isinstance(self.reg_num, str):
