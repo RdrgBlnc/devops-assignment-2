@@ -39,7 +39,11 @@
     try {
       response = await fetch(base.replace(/\/$/, "") + path + queryString(query), init);
     } catch (error) {
-      throw new ApiError(0, "unreachable", "The " + service + " service cannot be reached.", service);
+      // fetch gives no details here: the service may be stopped, still starting, or not
+      // allowing this page's address (CORS), and the browser does not say which.
+      throw new ApiError(0, "unreachable",
+        "The " + service + " service cannot be reached. It may be stopped or still starting; try again in a moment.",
+        service);
     }
     let data = null;
     try {
