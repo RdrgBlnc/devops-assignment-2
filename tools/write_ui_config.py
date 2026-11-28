@@ -3,7 +3,7 @@
 The deployment runs this before uploading ui/ to Azure Storage, with the Container Apps
 addresses; locally the committed config.js (localhost:8001 and :8002) is used as it is.
 
-    python tools/write_ui_config.py --vehicles-url https://... --reservations-url https://...
+    uv run tools/write_ui_config.py --vehicles-url https://... --reservations-url https://...
 """
 import argparse
 import json

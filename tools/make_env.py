@@ -1,7 +1,7 @@
 """Create the local .env file with random database passwords (for docker compose).
 
-    python tools/make_env.py            # creates .env, does nothing if it already exists
-    python tools/make_env.py --force    # replaces it (the database volume must be deleted too:
+    uv run tools/make_env.py            # creates .env, does nothing if it already exists
+    uv run tools/make_env.py --force    # replaces it (the database volume must be deleted too:
                                         #   docker compose down -v)
 
 The .env file is in .gitignore: the passwords exist only on this machine.

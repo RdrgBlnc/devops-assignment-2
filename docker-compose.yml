@@ -6,7 +6,7 @@
 #
 # No password is written in this repository. The three below are read from a local .env file
 # that is never committed (it is in .gitignore). Create it once with:
-#     python tools/make_env.py
+#     uv run tools/make_env.py
 # which fills it with random passwords. In Azure the same values are secrets of the Container
 # Apps, set by the deployment pipeline, never files in the repo.
 
@@ -16,7 +16,7 @@ services:
     platform: linux/amd64   # the image has no Arm build; Docker Desktop emulates it on Apple Silicon
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: ${SA_PASSWORD:?Run "python tools/make_env.py" once to create the .env file}
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD:?Run "uv run tools/make_env.py" once to create the .env file}
     volumes:
       - sqldata:/var/opt/mssql      # the data survives `docker compose down`
     healthcheck:
@@ -34,9 +34,9 @@ services:
       sql:
         condition: service_healthy
     environment:
-      MSSQL_SA_PASSWORD: ${SA_PASSWORD:?Run "python tools/make_env.py" once to create the .env file}
-      VEHICLES_DB_PASSWORD: ${VEHICLES_DB_PASSWORD:?Run "python tools/make_env.py" once to create the .env file}
-      RESERVATIONS_DB_PASSWORD: ${RESERVATIONS_DB_PASSWORD:?Run "python tools/make_env.py" once to create the .env file}
+      MSSQL_SA_PASSWORD: ${SA_PASSWORD:?Run "uv run tools/make_env.py" once to create the .env file}
+      VEHICLES_DB_PASSWORD: ${VEHICLES_DB_PASSWORD:?Run "uv run tools/make_env.py" once to create the .env file}
+      RESERVATIONS_DB_PASSWORD: ${RESERVATIONS_DB_PASSWORD:?Run "uv run tools/make_env.py" once to create the .env file}
     volumes:
       - ./db/init.sql:/init.sql:ro
     entrypoint: ["/bin/bash", "-c"]
@@ -53,7 +53,7 @@ services:
       db-init:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: mssql+pymssql://vehicles_app:${VEHICLES_DB_PASSWORD:?Run "python tools/make_env.py" once to create the .env file}@sql:1433/vehicles
+      DATABASE_URL: mssql+pymssql://vehicles_app:${VEHICLES_DB_PASSWORD:?Run "uv run tools/make_env.py" once to create the .env file}@sql:1433/vehicles
       CORS_ORIGIN: http://localhost:8080
       GIT_SHA: ${GIT_SHA:-dev}
     ports:
@@ -68,7 +68,7 @@ services:
       db-init:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: mssql+pymssql://reservations_app:${RESERVATIONS_DB_PASSWORD:?Run "python tools/make_env.py" once to create the .env file}@sql:1433/reservations
+      DATABASE_URL: mssql+pymssql://reservations_app:${RESERVATIONS_DB_PASSWORD:?Run "uv run tools/make_env.py" once to create the .env file}@sql:1433/reservations
       VEHICLES_URL: http://vehicles:8000
       CORS_ORIGIN: http://localhost:8080
       GIT_SHA: ${GIT_SHA:-dev}
