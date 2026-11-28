@@ -1,35 +1,42 @@
-{% extends "base.html" %}
-
-{% block title %}Transport Queue — Enterprise{% endblock %}
-
-{% block content %}
-<main class="placeholder placeholder--enterprise" style="justify-content: flex-start; padding: 3rem 1.5rem;">
-  <div style="max-width: 800px; width: 100%; margin: 0 auto; text-align: left;">
-    
-    <a href="{{ url_for('enterprise.dashboard') }}" style="color: var(--enterprise-accent-soft); display: inline-block; margin-bottom: 1rem;">← Back to Dashboard</a>
-
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-      <h1 style="color: var(--enterprise-accent); margin: 0;">Logistics & Transport Queues</h1>
-      <a href="{{ url_for('enterprise.transport_new') }}" style="background: var(--enterprise-accent); color: var(--enterprise-bg); padding: 0.5rem 1rem; border-radius: 6px; font-weight: 700;">+ Dispatch Vehicle</a>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transport Queue — Enterprise</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,600;1,500&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body class="theme-enterprise">
+<main class="page">
+  <div class="wrap wrap--medium">
+    <a class="back" href="dashboard.html">← Back to dashboard</a>
+    <div class="topbar">
+      <h1 class="title">Transport queues</h1>
+      <a class="btn" href="transport_new.html">+ Transport a vehicle</a>
     </div>
-
-    <div style="background: rgba(255,255,255,0.03); border-radius: 12px; padding: 1.5rem; border: 1px solid rgba(255,255,255,0.08);">
-      <h3 style="margin-top: 0; color: var(--enterprise-accent);">Active Batches</h3>
-
-      {% if pending_trips %}
-        <ul style="list-style-type: none; padding: 0; margin: 1rem 0 0;">
-          {% for trip in pending_trips %}
-            <li style="padding: 1rem; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 0.75rem; font-family: var(--font-ui); display: flex; justify-content: space-between; align-items: center;">
-              <span>{{ trip }}</span>
-              <span style="font-size: 0.85rem; padding: 0.2rem 0.6rem; border-radius: 10px; background: rgba(232,163,61,0.2); color: var(--enterprise-accent);">Queued</span>
-            </li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p style="opacity: 0.7; margin: 0;">No pending trips in the queue. All vehicles are currently at their designated locations.</p>
-      {% endif %}
+    <div id="message" role="alert"></div>
+    <div class="card">
+      <h3 style="margin-top:0">Waiting batches</h3>
+      <ul id="trips" class="pick-list"></ul>
     </div>
-
   </div>
 </main>
-{% endblock %}
+<script src="../js/config.js"></script>
+<script src="../js/api.js"></script>
+<script src="../js/ui.js"></script>
+<script>
+const { h, capitalize, guarded } = Ruta7;
+guarded(async () => {
+  const { trips } = await Ruta7Api.vehicles.transportQueue();
+  const list = document.getElementById("trips");
+  if (!trips.length) list.append(h("li", { class: "muted" }, "No vehicles are waiting. Every vehicle is in its destination city."));
+  trips.forEach((t) => list.append(h("li", { class: "card", style: "display:flex;justify-content:space-between;align-items:center" },
+    h("span", {}, (t.mode === "ship" ? "🚢 " : "🚚 ") + capitalize(t.mode) + ": " + capitalize(t.origin) + " → " + capitalize(t.destination)),
+    h("span", { class: "badge badge--wait" }, t.queued + " of " + t.needed + " vehicles"))));
+});
+</script>
+</body>
+</html>

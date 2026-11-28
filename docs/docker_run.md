@@ -11,6 +11,27 @@ Run them from the repo root.
 
 ## 1. Network and database server
 
+First, generate the local environment and SQL Server password by running the following command from the repository root:
+
+PowerShell and macOS / Linux:
+```
+uv run .\tools\make_env.py
+```
+
+Then, load the generated password into the terminal session.
+
+PowerShell:
+```
+$SA = (Get-Content .env | Where-Object { $_ -match '^SA_PASSWORD=' }) -replace '^SA_PASSWORD=', ''
+```
+
+macOS / Linux:
+```
+export SA=$(grep '^SA_PASSWORD=' .env | cut -d '=' -f2-)
+```
+
+## 2. Network and database server
+
 **Expect:** the network name, the SQL Server container id, 
 then silence from `sqlcmd` (no output means both databases were created; 
 an error message means wait longer and run it again).
@@ -20,11 +41,11 @@ PowerShell:
 docker network create ruta7
 
 docker run -d --name sql --network ruta7 -p 1433:1433 `
-  -e ACCEPT_EULA=Y -e "MSSQL_SA_PASSWORD=Passw0rd!Ruta7" `
+  -e ACCEPT_EULA=Y -e "MSSQL_SA_PASSWORD=$SA" `
   mcr.microsoft.com/mssql/server:2022-latest
 
 # wait about 20 seconds, then create one empty database per service
-docker exec sql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "Passw0rd!Ruta7" -C `
+docker exec sql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SA" -C `
   -Q "CREATE DATABASE vehicles; CREATE DATABASE reservations;"
 ```
 
@@ -33,15 +54,15 @@ macOS / Linux:
 docker network create ruta7
 
 docker run -d --name sql --network ruta7 -p 1433:1433 --platform linux/amd64 \
-  -e ACCEPT_EULA=Y -e 'MSSQL_SA_PASSWORD=Passw0rd!Ruta7' \
+  -e ACCEPT_EULA=Y -e 'MSSQL_SA_PASSWORD=$SA' \
   mcr.microsoft.com/mssql/server:2022-latest
 
 # wait about 20 seconds (about a minute on Apple Silicon), then create the databases
-docker exec sql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Passw0rd!Ruta7' -C \
+docker exec sql /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P '$SA' -C \
   -Q "CREATE DATABASE vehicles; CREATE DATABASE reservations;"
 ```
 
-## 2. Build and run the vehicles service
+## 3. Build and run the vehicles service
 
 **Expect:** the build finishes with no error, `docker run` prints a container id, 
 the logs show `migration applied: 001_init.sql` and `loaded 2059 vehicles`, `/health` returns `status: ok`, 
@@ -53,7 +74,7 @@ PowerShell:
 docker build -t ruta7-vehicles services/vehicles
 
 docker run -d --name vehicles --network ruta7 -p 8001:8000 `
-  -e "DATABASE_URL=mssql+pymssql://sa:Passw0rd%21Ruta7@sql:1433/vehicles" `
+  -e "DATABASE_URL=mssql+pymssql://sa:$SA@sql:1433/vehicles" `
   -e CORS_ORIGIN=http://localhost:8080 `
   ruta7-vehicles
 
@@ -67,7 +88,7 @@ macOS / Linux:
 docker build -t ruta7-vehicles services/vehicles
 
 docker run -d --name vehicles --network ruta7 -p 8001:8000 \
-  -e 'DATABASE_URL=mssql+pymssql://sa:Passw0rd%21Ruta7@sql:1433/vehicles' \
+  -e 'DATABASE_URL=mssql+pymssql://sa:$SA@sql:1433/vehicles' \
   -e CORS_ORIGIN=http://localhost:8080 \
   ruta7-vehicles
 
@@ -76,7 +97,7 @@ curl http://localhost:8001/health
 curl "http://localhost:8001/vehicles?limit=2"
 ```
 
-## 3. Build and run the reservations service
+## 4. Build and run the reservations service
 
 **Expect:** the same as vehicles, with `loaded 100 customers` and `loaded 151 rentals` in the logs, 
 `/health` returning `database: ok`, and `/customers?limit=2` returning 2 customers with `total` 100.
@@ -86,7 +107,7 @@ PowerShell:
 docker build -t ruta7-reservations services/reservations
 
 docker run -d --name reservations --network ruta7 -p 8002:8000 `
-  -e "DATABASE_URL=mssql+pymssql://sa:Passw0rd%21Ruta7@sql:1433/reservations" `
+  -e "DATABASE_URL=mssql+pymssql://sa:$SA@sql:1433/reservations" `
   -e VEHICLES_URL=http://vehicles:8000 `
   -e CORS_ORIGIN=http://localhost:8080 `
   ruta7-reservations
@@ -101,7 +122,7 @@ macOS / Linux:
 docker build -t ruta7-reservations services/reservations
 
 docker run -d --name reservations --network ruta7 -p 8002:8000 \
-  -e 'DATABASE_URL=mssql+pymssql://sa:Passw0rd%21Ruta7@sql:1433/reservations' \
+  -e 'DATABASE_URL=mssql+pymssql://sa:$SA@sql:1433/reservations' \
   -e VEHICLES_URL=http://vehicles:8000 \
   -e CORS_ORIGIN=http://localhost:8080 \
   ruta7-reservations
@@ -111,7 +132,7 @@ curl http://localhost:8002/health
 curl "http://localhost:8002/customers?limit=2"
 ```
 
-## 4. Check the two services work together
+## 5. Check the two services work together
  
 PowerShell:
 
@@ -161,7 +182,7 @@ docker logs reservations
 ```
  
 
-## 5. Clean up (same on both systems)
+## 6. Clean up (same on both systems)
  
 **Expect:** the container names, then the network name, printed back; 
 everything (including both databases) is deleted.
